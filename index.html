@@ -153,6 +153,11 @@ audio{width:100%;margin-top:12px;filter:grayscale(.5) opacity(.85)}
 .gStrum{flex:0 0 17%;min-width:76px;border-left:1px solid var(--line);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:none;user-select:none}
 .gStrum span{writing-mode:vertical-rl;font-family:'Jost',sans-serif;letter-spacing:.34em;text-transform:uppercase;font-size:12px;color:var(--brass)}
 .gStrum:active{background:#212B27}
+/* right-handed: nut on the right, frets running left, strum pad on the left */
+.righty .gBody{flex-direction:row-reverse}
+.righty .gCell{border-right:0;border-left:2px solid rgba(201,206,199,.4)}
+.righty .gCell.open{border-left:7px solid #EFE9DC;border-right:0}
+.righty .gStrum{border-left:0;border-right:1px solid var(--line)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -293,10 +298,11 @@ audio{width:100%;margin-top:12px;filter:grayscale(.5) opacity(.85)}
     <button class="gBtn" id="gExit">Exit</button>
     <div class="gName" id="gName">Em</div>
     <div class="gStatus" id="gStatus">place your fingers on the dashed circles</div>
-    <button class="gBtn" id="gPrev">Prev</button>
-    <button class="gBtn" id="gNext">Next</button>
+    <button class="gBtn" id="gPrev">‹</button>
+    <button class="gBtn" id="gNext">›</button>
     <button class="gBtn" id="gClear">Clear</button>
-    <button class="gBtn" id="gFit">Low · Narrow</button>
+    <button class="gBtn" id="gFit">Low · Wide</button>
+    <button class="gBtn" id="gHand">Right-handed</button>
     <button class="gBtn" id="gFree">Free</button>
   </div>
   <div class="gBody" id="gBody" style="display:none">
@@ -907,27 +913,41 @@ let gOpen=false, gChord='Em', gFreeMode=false;
 const gPressed=[null,null,null,null,null,null];   // fret per string, null = open
 
 function gBuild(){
+  const righty=store.get('righty',true);
+  $('guitar').classList.toggle('righty',righty);
+  $('gHand').textContent = righty ? 'Right-handed' : 'Left-handed';
+
+  // Right-handed: nut on the right, frets running left, thickest string on top.
+  // Left-handed is the mirror of that.
+  const sOrder = righty ? [0,1,2,3,4,5] : [5,4,3,2,1,0];   // top row first
+  const fOrder = righty ? [5,4,3,2,1,0] : [0,1,2,3,4,5];   // left to right, 0 = open
+
   const neck=$('gNeck'); neck.innerHTML='';
+
   const fr=document.createElement('div'); fr.className='gFretRow';
-  const sp1=document.createElement('div'); sp1.style.flex='0 0 30px'; fr.appendChild(sp1);
-  const sp2=document.createElement('div'); sp2.style.flex='0 0 47px'; sp2.textContent='OPEN'; fr.appendChild(sp2);
-  for(let f=1;f<=GFRETS;f++){const d=document.createElement('div');d.style.flex='1';d.textContent='FRET '+f;fr.appendChild(d);}
+  const mk=(flex,txt)=>{const d=document.createElement('div');d.style.flex=flex;d.textContent=txt||'';return d;};
+  const fretCells=fOrder.map(f=> f===0 ? mk('0 0 36px','OPEN') : mk('1','FRET '+f));
+  if(righty){ fretCells.forEach(c=>fr.appendChild(c)); fr.appendChild(mk('0 0 26px','')); }
+  else      { fr.appendChild(mk('0 0 26px','')); fretCells.forEach(c=>fr.appendChild(c)); }
   neck.appendChild(fr);
 
-  // thinnest string on top, thickest on the bottom — same as every other diagram here
-  for(let s=5;s>=0;s--){
+  sOrder.forEach(s=>{
     const row=document.createElement('div');
-    row.className='gRow'; row.style.setProperty('--th',(2.0+(5-s)*0.6).toFixed(1)+'px');
+    row.className='gRow';
+    row.style.setProperty('--th',(2.0+(5-s)*0.6).toFixed(1)+'px');
     const lb=document.createElement('div'); lb.className='gLbl';
-    lb.textContent=s===5?'e':OPEN[s].n; row.appendChild(lb);
-    for(let f=0;f<=GFRETS;f++){
+    lb.textContent = s===5?'e':OPEN[s].n;
+    const cells=fOrder.map(f=>{
       const c=document.createElement('div');
       c.className='gCell'+(f===0?' open':'');
       c.dataset.s=s; c.dataset.f=f;
-      row.appendChild(c);
-    }
+      return c;
+    });
+    if(righty){ cells.forEach(c=>row.appendChild(c)); row.appendChild(lb); }
+    else      { row.appendChild(lb); cells.forEach(c=>row.appendChild(c)); }
     neck.appendChild(row);
-  }
+  });
+
   // Real press-and-hold: each finger is tracked separately, a string only
   // sounds when you strum. Lift the finger and the note lifts with it.
   const held=new Map();                       // pointerId -> string index
@@ -1014,10 +1034,10 @@ function gStrumNow(up){
 /* Where the strings sit on screen. Which physical edge ends up "down"
    depends on which way the phone was turned, so this just cycles. */
 const GFITS=[
-  {pos:'flex-end',   band:.56, label:'Low \u00b7 Narrow'},
-  {pos:'flex-end',   band:.76, label:'Low \u00b7 Wide'},
-  {pos:'flex-start', band:.56, label:'High \u00b7 Narrow'},
-  {pos:'flex-start', band:.76, label:'High \u00b7 Wide'}
+  {pos:'flex-end',   band:.84, label:'Low \u00b7 Wide'},
+  {pos:'flex-end',   band:.66, label:'Low \u00b7 Tight'},
+  {pos:'flex-start', band:.84, label:'High \u00b7 Wide'},
+  {pos:'flex-start', band:.66, label:'High \u00b7 Tight'}
 ];
 let gFit=store.get('gfit',0);
 function gApplyFit(){
@@ -1060,6 +1080,11 @@ function gWire(){
   $('gNext').onclick=()=>gStep(1);
   $('gClear').onclick=()=>{const n=$('gNeck');if(n.gClearHeld)n.gClearHeld();for(let s=0;s<6;s++)gPressed[s]=null;gPaint();};
   $('gFit').onclick=()=>{gFit++;gApplyFit();};
+  $('gHand').onclick=()=>{
+    store.set('righty',!store.get('righty',true));
+    for(let s=0;s<6;s++)gPressed[s]=null;
+    gBuild(); gApplyFit(); gPaint();
+  };
   $('gFree').onclick=e=>{gFreeMode=!gFreeMode;e.target.classList.toggle('on',gFreeMode);gPaint();};
   let downY=0;
   const pad=$('gStrum');
